@@ -1,12 +1,9 @@
 use dotenvy::dotenv;
 use libsql::{de, params, Builder, Connection};
-use ntex::{
-    util::Either,
-    web::{
-        get, post, put,
-        types::{Json, Path, State},
-        App, Error, HttpResponse, HttpServer, Responder,
-    },
+use ntex::web::{
+    get, post, put,
+    types::{Json, Path, State},
+    App, HttpResponse, HttpServer, Responder,
 };
 use serde::{Deserialize, Serialize};
 use std::{env, sync::Arc, time::Duration};
@@ -25,8 +22,6 @@ struct CreateUser {
 struct UpdateUser {
     name: Box<str>,
 }
-
-type UserResponse = Either<HttpResponse, Result<Vec<User>, Error>>;
 
 #[put("/users/{id}")]
 async fn update_user(
@@ -127,20 +122,39 @@ struct Db {
 async fn connection() -> Connection {
     dotenv().expect(".env file not found");
 
-    let url = env::var("LIBSQL_URL").expect("LIBSQL_URL must be set");
-    let token = env::var("LIBSQL_AUTH_TOKEN").unwrap_or_default();
+    let url = env::var("DATABASE_URL").expect("LIBSQL_URL must be set");
+    let token = env::var("DATABASE_TOKEN").unwrap_or_default();
 
-    let db = Builder::new_remote_replica("local.db", url, token)
+    let db = Builder::new_remote_replica("local.db", url.clone(), token.clone())
         .read_your_writes(true)
         .sync_interval(Duration::from_secs(5))
         .build()
         .await
         .unwrap();
 
+    let _ = migrate(url, Some(token)).await;
+
     // this can update local database
     // let db = Builder::new_local("local.db").build().await.unwrap();
 
     db.connect().unwrap()
+}
+
+/// run the migrations on the database
+/// for more info check: https://github.com/emilpriver/geni/blob/main/examples/library/src/main.rs
+async fn migrate(url: String, token: Option<String>) -> std::io::Result<()> {
+    geni::migrate_database(
+        url,
+        token,
+        "migrations".to_string(),   // Migration Table
+        "./migrations".to_string(), // Migration Folder
+        "schema.sql".to_string(),   // Schema File
+        Some(30),                   // Wait timeout for the database to be ready
+        false,                      // Dump Schema
+    )
+    .await
+    .unwrap();
+    Ok(())
 }
 
 #[ntex::main]
