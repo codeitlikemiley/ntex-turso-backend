@@ -1,4 +1,4 @@
-# Ntext with Turso
+# Ntex with Turso
 
 Build web server with the #1 Fastest Framework, and Scale your Database with Turso.
 
